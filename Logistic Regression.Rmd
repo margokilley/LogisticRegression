@@ -1,0 +1,215 @@
+---
+title: 'Margo Killey'
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+Loading libraries and data required for this HW. 
+```{r}
+library(MASS)
+library(ISLR)
+data(Auto)
+library(dplyr)
+library(matrixStats)
+library(class)
+```
+2.a)
+Creating my new variable mpg01 and adding it to the Auto dataset. 
+```{r}
+mpg01 <- c()
+
+range_i <- length(Auto$mpg)
+
+for(i in 1:range_i) {
+  if(Auto$mpg[i] >= 25){
+    mpg01[i] = 1
+  } else {
+    mpg01[i] = 0
+  }
+}
+
+Auto <- mutate(Auto, mpg01)
+Auto$mpg01 <- factor(Auto$mpg01)
+```
+
+Now I'm going to split the data into a training set and a test set. Randomly selecting 80% of the observations from each class. 
+```{r}
+set.seed(123)
+mpg_over25 = which(Auto$mpg01 == 1)
+mpg_under25 = which(Auto$mpg01 == 0)
+
+train_id <- c(sample(mpg_over25, size = floor(0.80 * length(mpg_over25))), 
+              sample(mpg_under25, size = floor(0.80 * length(mpg_under25))))
+
+Auto_train = Auto[train_id,]
+Auto_test = Auto[-train_id,]
+table(Auto_train$mpg01)
+table(Auto_test$mpg01)
+```
+Now that I have my same data, split into training and test, I'm going to perform logistic regression on the training data, predicting mpg01 using year, weight, displacement, and horsepower. 
+
+```{r}
+mod1 = glm(mpg01 ~ year + weight + displacement + horsepower, data = Auto_train, family = binomial)
+levels(Auto_train$mpg01)
+summary(mod1)
+```
+
+As you can see, year, weight, and horsepower all have p-values less than 0.05, so those three predictors are significant. So for year, weight, and horsepower we can reject H0 and conclude that they help predict mpg01. 
+
+2.b) Now I'm going to report the trianing and test errors. We know that the fitted values in our model correspond to P(mpg01 >= 25 | X = x) since mpg01 being >= 1 corresponds with the factor value one. 
+Going to use the predict() function to get the fitted values for my logistic regression model. 
+
+```{r}
+pred_Train = predict(mod1, Auto_train)
+pred_Test = predict(mod1, Auto_test)
+head(pred_Train)
+head(pred_Test)
+```
+
+Need to remember that the output of predict is not my predicted probabilities. Need to take the inverse of these to get my predicted probabilities that exist between negative infinity and positive infinity and get them to be a probability existing between 0 and 1. 
+To do this, we need to take the inverse of the logit function, which is the expit function. 
+Going to use the binomial()$linkinv() functions, and when I apply these to my predict output, I will get the actual probabilities between 0 and 1 that I am looking for. 
+```{r}
+predProbs_train = binomial()$linkinv(pred_Train)
+predProbs_test = binomial()$linkinv(pred_Test)
+head(predProbs_train)
+head(predProbs_test)
+```
+Now that I have my training and testing probabilities between 0 and 1, I can compute training and testing errors. 
+
+Below is my training error. As you can see, my training error is 12%. 
+```{r}
+trainPrediction = rep(0, nrow(Auto_train))
+trainPrediction[predProbs_train > 0.5] = 1
+table(trainPrediction, Auto_train$mpg01, dnn = c("Predicted", "Actual"))
+round(mean(trainPrediction != Auto_train$mpg01), 2)
+```
+
+Now computing testing error. You can see below that it is 5%. 
+```{r}
+testPrediction = rep(0, nrow(Auto_test))
+testPrediction[predProbs_test > 0.5] = 1
+table(testPrediction, Auto_test$mpg01, dnn = c("Predicted", "Actual"))
+round(mean(testPrediction != Auto_test$mpg01), 2)
+```
+Going to now plot true class vs. predicted class labels from my logistic regression plotted against Weight and Horsepower (Those are the ones I plotted against in HW4).
+
+```{r}
+plot(Auto_train$weight, Auto_train$horsepower, 
+     col = c("blue", "green")[Auto_train$mpg01], 
+     xlab = "Weight", ylab = "Horsepower", 
+     main = "True class vs. Predicted class by logistic regression Training Data")
+
+points(Auto_train$weight, Auto_train$horsepower, 
+       pch = c(2, 3)[trainPrediction + 1])
+
+legend("bottomright", c("true mpg < 25", "true mpg >= 25", "pred mpg < 25", "pred mpg >= 25"), col = c("blue", "green", "black", "black"), pch = c(1, 1, 2, 3))
+```
+
+```{r}
+plot(Auto_test$weight, Auto_test$horsepower, 
+     col = c("blue", "green")[Auto_test$mpg01], 
+     xlab = "Weight", ylab = "Horsepower", 
+     main = "True class vs. Predicted class by logistic regression Test Data")
+
+points(Auto_test$weight, Auto_test$horsepower, 
+       pch = c(2, 3)[testPrediction + 1])
+
+legend("bottomright", c("true mpg < 25", "true mpg >= 25", "pred mpg < 25", "pred mpg >= 25"), col = c("blue", "green", "black", "black"), pch = c(1, 1, 2, 3))
+```
+2.c) Estimate the probability of a car having mpg >= 25 if its four predictors you used are all at the median values for the training dataset. 
+
+As you can see below, the probability of a car having mpg >= 25 is 0.2807.
+```{r}
+medians <- data.frame(median(Auto_train[, 1]), median(Auto_train[, 2]), 
+                      median(Auto_train[, 3]), median(Auto_train[, 4]), 
+                      median(Auto_train[, 5]), median(Auto_train[, 6]),
+                      median(Auto_train[, 7]), median(Auto_train[, 8]), 
+                      "random", 1)
+
+names(medians) <- c("mpg", "cylinders", "displacement", "horsepower", "weight", "acceleration", "year", "origin", "name", "mpg01")
+
+median_pred <- predict(mod1, medians)
+median_predProb <- binomial()$linkinv(median_pred)
+median_pred
+median_predProb
+```
+
+2.d) Perform KNN classification on the training data. Make plots of training classification error and test classification error as a function of the number of neighbors. First going to standardize my data since the ranges of the values are so different and KNN focuses on distance. 
+```{r}
+mean_Auto_train <- colMeans(Auto_train[c(3, 4, 5, 7)])
+std_Auto_train <- sqrt( diag (var(Auto_train[c(3, 4, 5, 7)])))
+
+X_Auto_train = scale(Auto_train[c(3, 4, 5, 7)], 
+                     center = mean_Auto_train, scale = std_Auto_train)
+
+y_Auto_train = Auto_train$mpg01
+
+X_Auto_test = scale(Auto_test[c(3, 4, 5, 7)], 
+                    center = mean_Auto_train, scale = std_Auto_train)
+
+y_Auto_test = Auto_test$mpg01
+```
+Now computing actual KNN training and testing. 
+
+```{r}
+kvalues = c(1:200)
+
+knnTrainingError = vector(length = length(kvalues))
+
+for(i in 1:length(kvalues)) {
+  knn.trainprediction = knn(train = X_Auto_train, test = X_Auto_train, 
+                        cl = Auto_train$mpg01, k = kvalues[i])
+  knnTrainingError[i] = mean(knn.trainprediction != Auto_train$mpg01)   
+}
+
+knnTestingError = vector(length = length(kvalues))
+
+for (i in 1:length(kvalues)) {
+  knn.testprediction = knn(train = X_Auto_train, test = X_Auto_test,
+                           cl = Auto_train$mpg01, k = kvalues[i])
+  knnTestingError[i] = mean(knn.testprediction != Auto_test$mpg01)
+}
+
+plot(knnTrainingError ~ kvalues, type = "b")
+plot(knnTestingError ~ kvalues, type = "b")
+kvalues[which.min(knnTrainingError)]
+kvalues[which.min(knnTestingError)]
+min(knnTrainingError)
+min(knnTestingError)
+```
+So as we can see, the minimum k for our training error is 1 (as is it should be in KNN), and the minimum k for our testing error is k = 41. 
+The training error at k = 1 is zero, and the testing error at k = 41 is 0.025. 
+```{r}
+plot(Auto_train$weight, Auto_train$horsepower, 
+     col = c("blue", "green")[Auto_train$mpg01], 
+     xlab = "Weight", ylab = "Horsepower", 
+     main = "True class vs. Predicted class by KNN regression, Training data")
+
+points(Auto_train$weight, Auto_train$horsepower, 
+       pch = c(2, 3)[knn.trainprediction])
+
+legend("bottomright", c("true mpg < 25", "true mpg >= 25", "pred mpg < 25", "pred mpg >= 25"), col = c("blue", "green", "black", "black"), pch = c(1, 1, 2, 3))
+```
+```{r}
+plot(Auto_test$weight, Auto_test$horsepower, 
+     col = c("blue", "green")[Auto_test$mpg01], 
+     xlab = "Weight", ylab = "Horsepower", 
+     main = "True class vs. Predicted class by KNN regression, Testing data")
+
+points(Auto_test$weight, Auto_test$horsepower, 
+       pch = c(2, 3)[knn.testprediction])
+
+legend("bottomright", c("true mpg < 25", "true mpg >= 25", "pred mpg < 25", "pred mpg >= 25"), col = c("blue", "green", "black", "black"), pch = c(1, 1, 2, 3))
+```
+2.f) Describe how KNN can be applied to estimate the probability in c.
+Estimating probability: use the ratio of the K-neighbors belonging to one class and then that is the probability it will be in that one class. Some things that could jeopardize the estimation is if the K-neighbors are really far away, so you're not estimating your probability based on like data points. Also, if there's a tie, the KNN regression would randomly pick one. SO if you have a lot of ties, you could have a lot of random results. 
+
+2.g) Compare and contrast performance of LDA, QDA, logistic regression, and KNN on this dataset. What do your results suggest about the distribution of the data/boundary between classes? 
+LDA Testing error: 0.10
+QDA Testing error: 0.125
+Logistic Testing error: 0.05
+KNN Testing error: 0.025
+
+So it seems that LDA and QDA both do a substantially worse job at predicting the test values than logistic and KNN do. This suggests to me that the data doesn't have a normal distribution, because that is assumed in LDA and QDA, but not in KNN and logistic regression. Also, I think that the decision boundary is more complicated than linear, because KNN is better when the decision boudnary is complicated, and logistic is better when the decision boundary is linear. So I believe that my data doesn't have a normal distribution and has a more complicated decision boundary. Also, since KNN works so well with a k of 41, I believe that in my data, data points with mpg < 25 are surrounded by a lot of neighbors also with mpg < 25, and vice versa for mpg >= 25. So even if there is a complicated decision boundary, they are still with their like data points. 
